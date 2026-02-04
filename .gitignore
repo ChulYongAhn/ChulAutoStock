@@ -23,6 +23,11 @@ env/
 .env
 config.yaml
 config.json
+kis_token.json
+
+# 캐시 파일
+past_data_cache.json
+scoring_result_*.json
 
 # IDE
 .vscode/
