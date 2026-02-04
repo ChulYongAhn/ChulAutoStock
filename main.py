@@ -1,12 +1,13 @@
 """
-ChulAutoStock - 자동 주식 트레이딩 프로젝트
-한국투자증권 API 사용
+ChulAutoStock - 24시간 자동 주식 트레이딩 시스템
+매일 08:29 ~ 10:00 자동 실행
 """
 
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
-# 모듈 임포트
+# Phase 모듈 임포트
 from phase0_auth import Phase0Auth
 from phase1_past_data import Phase1PastData
 from phase2_monitoring import Phase2Monitoring
@@ -17,7 +18,7 @@ load_dotenv()
 
 
 class ChulAutoStock:
-    """메인 프로그램 클래스"""
+    """24시간 자동 트레이딩 시스템"""
 
     def __init__(self, is_real: bool = True):
         """
@@ -31,204 +32,290 @@ class ChulAutoStock:
         self.api = None
         self.past_data = {}
 
-    def phase0_auth(self) -> bool:
-        """
-        Phase 0: API 인증
+        # 거래 시간 설정
+        self.WAKE_TIME = (8, 29)      # 08:29 시작
+        self.PHASE1_TIME = (8, 30)    # 08:30 Phase 1
+        self.PHASE2_TIME = (8, 35)    # 08:35 Phase 2 시작
+        self.PHASE3_TIME = (8, 58)    # 08:58 Phase 3
+        self.MARKET_OPEN = (9, 0)     # 09:00 장 시작
+        self.PHASE5_TIME = (9, 59)    # 09:59 Phase 5
+        self.SLEEP_TIME = (10, 0)     # 10:00 종료
 
-        Returns:
-            성공 여부
-        """
+        self.TRADING_DAYS = [0, 1, 2, 3, 4]  # 월~금
+
+    def run_forever(self):
+        """24시간 무한 실행"""
+        print("="*70)
+        print(" ChulAutoStock - 24시간 자동 트레이딩 시스템")
+        print(" 프로그램이 24시간 구동됩니다.")
+        print(" 매일 08:29 ~ 10:00 자동 거래")
+        print(" 종료: Ctrl+C")
+        print("="*70)
+
+        while True:
+            try:
+                now = datetime.now()
+
+                # 거래일 체크
+                if not self.is_trading_day(now):
+                    self.wait_mode(f"주말/공휴일 - 다음 거래일 대기")
+                    continue
+
+                # 시간별 동작
+                current_time = (now.hour, now.minute)
+
+                # 08:29 - 깨어나기
+                if current_time == self.WAKE_TIME:
+                    self.wake_up()
+
+                # 08:30 - Phase 1
+                elif current_time == self.PHASE1_TIME:
+                    if self.auth and self.api:
+                        self.phase1_past_data()
+
+                # 08:35 ~ 08:57 - Phase 2 반복
+                elif self.PHASE2_TIME <= current_time < self.PHASE3_TIME:
+                    if self.auth and self.api and self.past_data:
+                        self.phase2_monitoring()
+
+                # 08:58 - Phase 3
+                elif current_time == self.PHASE3_TIME:
+                    if self.auth and self.api:
+                        self.phase3_final_selection()
+
+                # 09:00 ~ 09:58 - Phase 4
+                elif self.MARKET_OPEN <= current_time < self.PHASE5_TIME:
+                    if self.auth and self.api:
+                        self.phase4_position_management()
+
+                # 09:59 - Phase 5
+                elif current_time == self.PHASE5_TIME:
+                    if self.auth and self.api:
+                        self.phase5_daily_closing()
+
+                # 10:00 이후 - 대기 모드
+                elif current_time >= self.SLEEP_TIME:
+                    self.enter_sleep_mode()
+
+                # 08:29 이전 - 대기 모드
+                elif current_time < self.WAKE_TIME:
+                    minutes_until = self.minutes_until_wake()
+                    self.wait_mode(f"거래 시작까지 {minutes_until}분 남음")
+
+                # 짧은 대기 (CPU 사용량 최소화)
+                time.sleep(30)  # 30초마다 체크
+
+            except KeyboardInterrupt:
+                print("\n\n프로그램을 종료합니다.")
+                break
+            except Exception as e:
+                print(f"\n❌ 오류 발생: {e}")
+                print("1분 후 재시작...")
+                time.sleep(60)
+
+    def wake_up(self):
+        """08:29 - 거래 준비 시작"""
+        print("\n" + "="*70)
+        print(f"🔔 WAKE UP! - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("="*70)
+
+        # Phase 0: API 인증
         phase0 = Phase0Auth(is_real=self.is_real)
         self.auth, self.api = phase0.run()
 
         if not self.auth or not self.api:
-            return False
+            print("❌ API 인증 실패! 대기 모드 유지...")
+            return
 
         # API 사용량 체크
-        self._check_api_usage("Phase 0")
-        return True
+        self._check_api_usage("Wake Up")
 
-    def phase1_past_data(self) -> bool:
-        """
-        Phase 1: 과거 데이터 조회
+        print("✅ 거래 준비 완료! Phase 1 대기 중...")
 
-        Returns:
-            성공 여부
-        """
+    def phase1_past_data(self):
+        """Phase 1: 과거 데이터 수집"""
         phase1 = Phase1PastData()
         self.past_data = phase1.run()
 
-        if not self.past_data:
-            print("❌ Phase 1 실패: 전일 데이터를 가져오지 못했습니다.")
+        if self.past_data:
+            print(f"✅ Phase 1 완료: {len(self.past_data)}개 종목 데이터 수집")
+
+        self._check_api_usage("Phase 1")
+
+    def phase2_monitoring(self):
+        """Phase 2: 실시간 모니터링"""
+        if not hasattr(self, 'phase2_instance'):
+            self.phase2_instance = Phase2Monitoring(self.api, self.past_data)
+
+        filtered = self.phase2_instance.run()
+        print(f"📊 Phase 2: {len(filtered)}개 종목 필터링")
+
+        # 08:57 이후에만 API 사용량 체크 (과도한 체크 방지)
+        if datetime.now().minute >= 57:
+            self._check_api_usage("Phase 2")
+
+    def phase3_final_selection(self):
+        """Phase 3: 최종 종목 선정"""
+        if hasattr(self, 'phase2_instance'):
+            filtered = self.phase2_instance.get_filtered_stocks()
+
+            if filtered:
+                phase3 = Phase3Scoring(filtered)
+                top_stocks = phase3.run()
+
+                if top_stocks:
+                    print("\n🎯 Phase 3 최종 선정 완료!")
+                    print(f"   매수 예정: {len(top_stocks)}개 종목")
+
+                    # TODO: 실제 매수 주문 구현
+                    for stock in top_stocks:
+                        print(f"   - {stock['종목명']} ({stock['종목코드']})")
+
+        self._check_api_usage("Phase 3")
+
+    def phase4_position_management(self):
+        """Phase 4: 포지션 관리 (구현 예정)"""
+        # 실시간 현재가 모니터링
+        # 익절/손절 체크
+        # 자동 매도 실행
+        pass
+
+    def phase5_daily_closing(self):
+        """Phase 5: 일일 마감"""
+        print("\n" + "="*70)
+        print(f"🏁 일일 마감 - {datetime.now().strftime('%H:%M:%S')}")
+        print("="*70)
+
+        # TODO: 보유 종목 전량 매도
+
+        # 일일 리포트
+        self._generate_daily_report()
+
+        # API 사용량 최종 체크
+        self._check_api_usage("Daily Closing")
+
+        print("\n😴 대기 모드 전환 준비...")
+
+    def enter_sleep_mode(self):
+        """대기 모드 진입"""
+        # 10:00가 되면 한 번만 실행
+        now = datetime.now()
+        if now.hour == 10 and now.minute == 0:
+            if hasattr(self, 'sleep_announced'):
+                return
+
+            print("\n" + "="*70)
+            print(f"😴 SLEEP MODE - {datetime.now().strftime('%H:%M:%S')}")
+            print("다음 거래일 08:29까지 대기")
+            print("="*70)
+
+            # 초기화
+            self.auth = None
+            self.api = None
+            self.past_data = {}
+            if hasattr(self, 'phase2_instance'):
+                del self.phase2_instance
+
+            self.sleep_announced = True
+
+        # 10:01 이후에는 플래그 리셋
+        elif now.hour == 10 and now.minute == 1:
+            if hasattr(self, 'sleep_announced'):
+                del self.sleep_announced
+
+    def wait_mode(self, message: str):
+        """대기 모드 표시"""
+        now = datetime.now()
+
+        # 1분마다 한 번만 출력
+        if now.second < 30:
+            print(f"\r⏰ [{now.strftime('%H:%M')}] {message}", end="", flush=True)
+
+        time.sleep(30)
+
+    def is_trading_day(self, date: datetime) -> bool:
+        """거래일 여부 확인"""
+        # 주말 체크
+        if date.weekday() not in self.TRADING_DAYS:
             return False
 
-        # API 사용량 체크 (Phase 1은 pykrx 사용이므로 한투 API 사용량과 무관하지만 참고용)
-        self._check_api_usage("Phase 1")
+        # TODO: 공휴일 체크 추가
 
         return True
 
-    def phase2_monitoring(self) -> list:
-        """
-        Phase 2: 실시간 모니터링
+    def minutes_until_wake(self) -> int:
+        """거래 시작까지 남은 시간 (분)"""
+        now = datetime.now()
+        wake_time = now.replace(hour=8, minute=29, second=0)
 
-        Returns:
-            필터링된 종목 리스트
-        """
-        phase2 = Phase2Monitoring(self.api, self.past_data)
-        filtered_stocks = phase2.run()
+        # 오늘 08:29가 이미 지났으면 내일
+        if now >= wake_time:
+            wake_time += timedelta(days=1)
 
-        # API 사용량 체크
-        self._check_api_usage("Phase 2")
+            # 주말 스킵
+            while wake_time.weekday() not in self.TRADING_DAYS:
+                wake_time += timedelta(days=1)
 
-        return filtered_stocks
-
-    def phase3_scoring(self, filtered_stocks: list) -> list:
-        """
-        Phase 3: 스코어링 및 순위화
-
-        Args:
-            filtered_stocks: Phase 2에서 필터링된 종목
-
-        Returns:
-            상위 3개 종목
-        """
-        if not filtered_stocks:
-            print("\n⚠️  Phase 3 스킵: 필터링된 종목이 없습니다.")
-            return []
-
-        phase3 = Phase3Scoring(filtered_stocks)
-        top_stocks = phase3.run()
-
-        # API 사용량 체크
-        self._check_api_usage("Phase 3")
-
-        return top_stocks
+        diff = wake_time - now
+        return int(diff.total_seconds() / 60)
 
     def _check_api_usage(self, phase_name: str):
-        """
-        API 사용량 체크 및 출력
-
-        Args:
-            phase_name: Phase 이름
-        """
+        """API 사용량 체크"""
         if not self.api:
             return
 
         usage = self.api.get_api_usage()
         if usage:
-            print(f"\n📊 [{phase_name} 완료] API 사용량:")
-            print(f"   일일: {usage.get('일일_사용', 'N/A')}/{usage.get('일일_한도', 'N/A')} " +
-                  f"(남은횟수: {usage.get('일일_남은횟수', 'N/A')}, 사용률: {usage.get('사용률', 'N/A')})")
-        else:
-            print(f"\n📊 [{phase_name} 완료] API 사용량 조회 실패")
+            print(f"📊 [{phase_name}] API: {usage.get('일일_사용', '?')}/{usage.get('일일_한도', '?')} ({usage.get('사용률', '?')})")
 
-    def run_once(self):
-        """단일 실행 모드"""
-        print("\n" + "🚀 ChulAutoStock 단일 실행 모드")
+    def _generate_daily_report(self):
+        """일일 거래 리포트 생성"""
+        print("\n📋 일일 거래 리포트")
+        print(f"   날짜: {datetime.now().strftime('%Y-%m-%d')}")
+        print(f"   실행 시간: 08:29 ~ 10:00")
+        # TODO: 실제 거래 통계 추가
+        print("   [거래 내역은 Phase 4, 5 구현 후 추가]")
 
-        # Phase 0: 인증
-        if not self.phase0_auth():
-            return
 
-        # Phase 1: 전일 데이터
-        if not self.phase1_past_data():
-            return
+def test_mode():
+    """테스트 모드 - 즉시 실행"""
+    print("🧪 테스트 모드 실행")
+    print("=" * 70)
 
-        # Phase 2: 모니터링
-        filtered_stocks = self.phase2_monitoring()
+    app = ChulAutoStock(is_real=True)
 
-        # Phase 3: 스코어링
-        top_stocks = self.phase3_scoring(filtered_stocks)
+    # 바로 실행
+    print("Phase 0: API 인증")
+    app.wake_up()
 
-        print("\n" + "="*50)
-        print("✅ 모든 Phase 완료!")
-        print(f"   최종 선정: {len(top_stocks)}개 종목")
-        print("="*50)
+    if app.auth and app.api:
+        print("\nPhase 1: 데이터 수집")
+        app.phase1_past_data()
 
-    def run_continuous(self):
-        """
-        연속 실행 모드
-        """
-        print("\n" + "="*70)
-        print("🔄 ChulAutoStock 연속 실행 모드")
-        print("   완료 즉시 다시 실행")
-        print("   중단하려면 Ctrl+C를 누르세요")
-        print("="*70)
+        if app.past_data:
+            print("\nPhase 2: 모니터링")
+            app.phase2_monitoring()
 
-        # Phase 0: 인증
-        if not self.phase0_auth():
-            return
+            print("\nPhase 3: 최종 선정")
+            app.phase3_final_selection()
 
-        # Phase 1: 전일 데이터 (한 번만 실행)
-        if not self.phase1_past_data():
-            return
+            print("\nPhase 5: 마감")
+            app.phase5_daily_closing()
 
-        iteration = 0
-        try:
-            while True:
-                iteration += 1
-                current_time = datetime.now().strftime("%H:%M:%S")
-
-                print(f"\n\n{'='*20} 반복 #{iteration} - {current_time} {'='*20}")
-
-                # Phase 2: 모니터링
-                filtered_stocks = self.phase2_monitoring()
-
-                # Phase 3: 스코어링 (08:59:00 ~ 08:59:50 사이에만)
-                now = datetime.now()
-                if now.hour == 8 and 59 <= now.minute <= 59:
-                    top_stocks = self.phase3_scoring(filtered_stocks)
-                    if top_stocks:
-                        print("\n🎯 장 시작 직전 최종 선정 완료!")
-
-                # 바로 다음 반복 시작 (대기 없음)
-                print("\n➡️  즉시 다시 실행...")
-
-        except KeyboardInterrupt:
-            print("\n\n⚠️  사용자에 의해 중단되었습니다.")
-            print(f"총 {iteration}회 실행")
-
-    def test_account(self):
-        """계좌 정보 테스트"""
-        print("\n" + "="*50)
-        print("[ 계좌 정보 테스트 ]")
-        print("="*50)
-
-        # Phase 0: 인증
-        if not self.phase0_auth():
-            return
-
-        # 계좌 잔고 조회
-        balance = self.api.get_balance()
-        if balance:
-            print("\n📊 계좌 정보:")
-            print(f"   주문가능현금: {balance['주문가능현금']:,}원")
-            print(f"   총평가금액: {balance['총평가금액']:,}원")
-            print(f"   평가손익: {balance['평가손익']:+,}원 ({balance['수익률']:+.2f}%)")
-
-        # 보유 주식 조회
-        stocks = self.api.get_stock_balance()
-        if stocks:
-            print(f"\n📈 보유 종목: {len(stocks)}개")
-            for stock in stocks:
-                print(f"   {stock['종목명']}: {stock['보유수량']:,}주")
-        else:
-            print("\n📈 보유 종목: 없음")
+    print("\n✅ 테스트 완료")
 
 
 def main():
     """메인 함수"""
-    print("="*70)
-    print(" ChulAutoStock - 한국투자증권 API 자동 트레이딩")
-    print(f" 시작 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("="*70)
-    print("\n📌 연속 실행 모드로 시작합니다")
-    print("   완료 즉시 다시 실행")
-    print("   종료하려면 Ctrl+C를 누르세요")
+    import sys
 
-    # 바로 연속 실행 모드 시작 (대기 없음)
-    app = ChulAutoStock(is_real=True)  # 실전 모드
-    app.run_continuous()
+    # 테스트 모드 체크
+    if len(sys.argv) > 1 and sys.argv[1] == "test":
+        test_mode()
+    else:
+        # 24시간 모드
+        app = ChulAutoStock(is_real=True)
+        app.run_forever()
 
 
 if __name__ == "__main__":

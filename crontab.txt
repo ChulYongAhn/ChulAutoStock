@@ -1,0 +1,28 @@
+# ChulAutoStock Crontab 설정
+#
+# 사용법:
+# 1. crontab -e 실행
+# 2. 아래 내용 복사/붙여넣기
+# 3. 경로를 실제 프로젝트 경로로 수정
+#
+# 또는 직접 설치:
+# crontab crontab.txt
+
+# 환경 변수 설정
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+
+# ChulAutoStock 프로젝트 경로 (수정 필요!)
+PROJECT_DIR=/Users/chulyong/Documents/RecentProjects/ChulAutoStock
+
+# 매일 08:25 시작 (월-금)
+25 8 * * 1-5 $PROJECT_DIR/start.sh
+
+# 매일 10:05 종료 (월-금)
+5 10 * * 1-5 $PROJECT_DIR/stop.sh
+
+# 옵션: 매일 자정에 오래된 로그 정리 (30일 이상)
+0 0 * * * find $PROJECT_DIR/logs -name "*.log" -mtime +30 -delete
+
+# 옵션: 매주 일요일 자정에 캐시 정리
+0 0 * * 0 rm -f $PROJECT_DIR/past_data_cache.json $PROJECT_DIR/kis_token.json
