@@ -1,6 +1,6 @@
 """
 매수 테스트 스크립트
-삼성전자 1주 매수만 실행
+KT 1주 매수만 실행
 """
 
 import os
@@ -19,7 +19,7 @@ load_dotenv()
 def main():
     """매수 테스트 메인"""
     print("="*60)
-    print("📈 매수 테스트 - 삼성전자 1주")
+    print("📈 매수 테스트 - KT 1주")
     print("="*60)
 
     # 모드 확인
@@ -34,7 +34,9 @@ def main():
     auth = KISAuth(is_real=is_real)
     api = KISApi(auth)
 
-    if not auth.access_token:
+    # 토큰 획득 시도
+    token = auth.get_token()
+    if not token:
         print("❌ API 인증 실패!")
         return
 
@@ -65,10 +67,10 @@ def main():
         if is_real:
             return
 
-    # 2. 삼성전자 현재가 조회
+    # 2. KT 현재가 조회
     print("\n📊 [종목 정보]")
-    stock_code = "005930"
-    stock_name = "삼성전자"
+    stock_code = "030200"
+    stock_name = "KT"
 
     price_info = api.get_current_price(stock_code)
     if not price_info:
@@ -105,13 +107,9 @@ def main():
         print(f"   부족 금액: {(buy_amount - cash_before):,}원")
         return
 
-    # 실전 확인
+    # 실전 경고만 표시
     if is_real:
         print("\n⚠️ 실전투자 모드 - 실제 매수가 진행됩니다!")
-        confirm = input("계속하시겠습니까? (yes/no): ")
-        if confirm.lower() != "yes":
-            print("매수 취소")
-            return
 
     # 4. 매수 실행
     print("\n📤 [매수 주문 실행]")

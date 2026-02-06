@@ -100,16 +100,15 @@ class KISApi:
         Returns:
             잔고 정보 딕셔너리
         """
+        # 모의투자의 경우 다른 API 사용
+        if not self.auth.is_real:
+            return self._get_balance_mock()
+
+        # 실전투자는 기존 API 사용
         path = "/uapi/domestic-stock/v1/trading/inquire-psbl-order"
 
-        # 실전/모의 구분
-        if self.auth.is_real:
-            tr_id = "TTTC8908R"  # 실전투자
-        else:
-            tr_id = "VTTC8908R"  # 모의투자
-
         headers = {
-            "tr_id": tr_id
+            "tr_id": "TTTC8908R"  # 실전투자
         }
 
         # 계좌번호 처리 (10자리 또는 8자리-2자리 형식 지원)
@@ -145,6 +144,59 @@ class KISApi:
                 "매입금액": int(output.get("pchs_amt", 0)),  # 매입 금액
                 "평가손익": int(output.get("evlu_pfls_amt", 0)),  # 평가 손익 금액
                 "수익률": float(output.get("evlu_pfls_rt", 0))  # 평가 손익율
+            }
+
+        return None
+
+    def _get_balance_mock(self) -> Optional[Dict]:
+        """
+        모의투자용 잔고 조회 (다른 API 사용)
+
+        Returns:
+            잔고 정보 딕셔너리
+        """
+        path = "/uapi/domestic-stock/v1/trading/inquire-balance"
+
+        headers = {
+            "tr_id": "VTTC8434R"  # 모의투자 잔고조회
+        }
+
+        # 계좌번호 처리
+        if "-" in self.account_no:
+            account_parts = self.account_no.split("-")
+        else:
+            if len(self.account_no) == 10:
+                account_parts = [self.account_no[:8], self.account_no[8:]]
+            else:
+                print(f"❌ 잘못된 계좌번호 형식: {self.account_no}")
+                return None
+
+        params = {
+            "CANO": account_parts[0],
+            "ACNT_PRDT_CD": account_parts[1],
+            "AFHR_FLPR_YN": "N",
+            "OFL_YN": "",
+            "INQR_DVSN": "02",
+            "UNPR_DVSN": "01",
+            "FUND_STTL_ICLD_YN": "N",
+            "FNCG_AMT_AUTO_RDPT_YN": "N",
+            "PRCS_DVSN": "01",
+            "CTX_AREA_FK100": "",
+            "CTX_AREA_NK100": ""
+        }
+
+        result = self._make_request("GET", path, headers=headers, params=params)
+
+        if result and result.get("rt_cd") == "0":
+            output2 = result.get("output2", [{}])[0]
+            return {
+                "주문가능현금": int(output2.get("dnca_tot_amt", 0)),
+                "예수금": int(output2.get("dnca_tot_amt", 0)),
+                "총평가금액": int(output2.get("tot_evlu_amt", 0)),
+                "순자산금액": int(output2.get("nass_amt", 0)),
+                "총매입금액": int(output2.get("pchs_amt_smtl_amt", 0)),
+                "평가손익": int(output2.get("evlu_pfls_smtl_amt", 0)),
+                "수익률": float(output2.get("tot_evlu_pfls_rt", 0))
             }
 
         return None
@@ -390,16 +442,15 @@ class KISApi:
         Returns:
             주문 리스트
         """
+        # 모의투자의 경우 API가 불안정하므로 빈 리스트 반환
+        if not self.auth.is_real:
+            # TODO: 모의투자 전용 API 키 발급 후 수정 필요
+            return []
+
         path = "/uapi/domestic-stock/v1/trading/inquire-daily-ccld"
 
-        # 실전/모의 구분
-        if self.auth.is_real:
-            tr_id = "TTTC8001R"  # 실전
-        else:
-            tr_id = "VTTC8001R"  # 모의
-
         headers = {
-            "tr_id": tr_id
+            "tr_id": "TTTC8001R"  # 실전
         }
 
         # 계좌번호 처리

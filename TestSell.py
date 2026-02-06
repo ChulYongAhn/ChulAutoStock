@@ -1,6 +1,6 @@
 """
 매도 테스트 스크립트
-삼성전자 1주 매도만 실행
+KT 1주 매도만 실행
 """
 
 import os
@@ -19,7 +19,7 @@ load_dotenv()
 def main():
     """매도 테스트 메인"""
     print("="*60)
-    print("📉 매도 테스트 - 삼성전자 1주")
+    print("📉 매도 테스트 - KT 1주")
     print("="*60)
 
     # 모드 확인
@@ -34,7 +34,9 @@ def main():
     auth = KISAuth(is_real=is_real)
     api = KISApi(auth)
 
-    if not auth.access_token:
+    # 토큰 획득 시도
+    token = auth.get_token()
+    if not token:
         print("❌ API 인증 실패!")
         return
 
@@ -49,8 +51,8 @@ def main():
     print("\n📋 [보유 종목 확인]")
     stocks = api.get_stock_balance()
 
-    stock_code = "005930"
-    stock_name = "삼성전자"
+    stock_code = "030200"
+    stock_name = "KT"
     holding_quantity = 0
     avg_price = 0
 
@@ -125,13 +127,9 @@ def main():
     print(f"   예상 입금: {sell_amount:,}원")
     print(f"   예상 현금: {expected_cash:,}원")
 
-    # 실전 확인
+    # 실전 경고만 표시
     if is_real:
         print("\n⚠️ 실전투자 모드 - 실제 매도가 진행됩니다!")
-        confirm = input("계속하시겠습니까? (yes/no): ")
-        if confirm.lower() != "yes":
-            print("매도 취소")
-            return
 
     # 5. 매도 실행
     print("\n📉 [매도 주문 실행]")

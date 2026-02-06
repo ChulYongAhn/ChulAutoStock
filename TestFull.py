@@ -1,7 +1,7 @@
 """
 ChulAutoStock 테스트 스크립트
 모의투자/실전투자 테스트용
-삼성전자 1주 매수 → 매도 테스트
+KT 1주 매수 → 매도 테스트
 """
 
 import time
@@ -35,7 +35,9 @@ def main():
     auth = KISAuth(is_real=is_real)
     api = KISApi(auth)
 
-    if not auth.access_token:
+    # 토큰 획득 시도
+    token = auth.get_token()
+    if not token:
         print("❌ API 인증 실패!")
         return
 
@@ -64,9 +66,9 @@ def main():
     print("\n⏳ 1초 대기...")
     time.sleep(1)
 
-    # 3. 삼성전자 현재가 조회
-    stock_code = "005930"  # 삼성전자
-    print(f"\n📊 삼성전자({stock_code}) 현재가 조회...")
+    # 3. KT 현재가 조회
+    stock_code = "030200"  # KT
+    print(f"\n📊 KT({stock_code}) 현재가 조회...")
 
     price_info = api.get_current_price(stock_code)
     if not price_info:
@@ -84,17 +86,13 @@ def main():
     # 4. 매수 주문 (1주)
     buy_quantity = 1
     print(f"\n🛒 매수 주문 실행")
-    print(f"   종목: 삼성전자")
+    print(f"   종목: KT")
     print(f"   수량: {buy_quantity}주")
     print(f"   예상금액: {current_price * buy_quantity:,}원")
 
-    # 실전투자일 경우 최종 확인
+    # 실전투자일 경우 경고만 표시
     if is_real:
-        print("\n⚠️ 실전투자 모드입니다! 실제 매수가 진행됩니다.")
-        confirm = input("계속하시겠습니까? (yes/no): ")
-        if confirm.lower() != "yes":
-            print("테스트 중단")
-            return
+        print("\n⚠️ 실전투자 모드 - 실제 거래가 진행됩니다!")
 
     # 매수 실행
     buy_result = api.buy_stock(stock_code, buy_quantity, order_type="01")  # 시장가
@@ -139,7 +137,7 @@ def main():
 
     # 7. 매도 주문
     print(f"\n📤 매도 주문 실행")
-    print(f"   종목: 삼성전자")
+    print(f"   종목: KT")
     print(f"   수량: {buy_quantity}주")
 
     # 현재가 다시 조회
@@ -229,21 +227,15 @@ if __name__ == "__main__":
     hour = now.hour
     weekday = now.weekday()
 
-    # 주말 체크
+    # 주말 체크 (경고만)
     if weekday >= 5:  # 토요일(5), 일요일(6)
         print("⚠️ 주말에는 거래가 불가능합니다.")
-        print("모의투자는 가능하지만 체결되지 않을 수 있습니다.")
-        confirm = input("계속하시겠습니까? (yes/no): ")
-        if confirm.lower() != "yes":
-            exit()
+        print("   모의투자는 가능하지만 체결되지 않을 수 있습니다.")
 
-    # 장시간 체크 (09:00 ~ 15:30)
+    # 장시간 체크 (경고만)
     if not (9 <= hour < 16):
         print("⚠️ 정규 장시간(09:00~15:30)이 아닙니다.")
-        print("시장가 주문이 체결되지 않을 수 있습니다.")
-        confirm = input("계속하시겠습니까? (yes/no): ")
-        if confirm.lower() != "yes":
-            exit()
+        print("   시장가 주문이 체결되지 않을 수 있습니다.")
 
     # 메인 실행
     main()
