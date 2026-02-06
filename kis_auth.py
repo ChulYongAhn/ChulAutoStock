@@ -156,6 +156,7 @@ class KISAuth:
             "token_type": self.token_type,
             "token_expires_at": self.token_expires_at.isoformat() if self.token_expires_at else None,
             "is_real": self.is_real,
+            "app_key_prefix": self.app_key[:10] if self.app_key else None,
             "saved_at": datetime.now().isoformat()
         }
 
@@ -176,6 +177,12 @@ class KISAuth:
 
             # 실전/모의 모드 확인
             if token_data.get("is_real") != self.is_real:
+                print("⚠️  캐시된 토큰의 모드가 다름 - 새 토큰 발급 필요")
+                return False
+
+            # 앱키 확인 (같은 계정인지 검증)
+            if token_data.get("app_key_prefix") != self.app_key[:10]:
+                print("⚠️  다른 계정의 토큰 - 새 토큰 발급 필요")
                 return False
 
             self.access_token = token_data.get("access_token")
@@ -188,6 +195,12 @@ class KISAuth:
 
         except Exception as e:
             print(f"⚠️  토큰 캐시 로드 실패: {e}")
+            # 캐시 파일 삭제
+            try:
+                os.remove(self.token_file)
+                print("   캐시 파일 삭제됨")
+            except:
+                pass
             return False
 
     def get_headers(self) -> Dict[str, str]:
