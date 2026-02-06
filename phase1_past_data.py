@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional
 from pykrx import stock
 from stock_list import KOSPI_100, get_stock_name
+from slack_service import slack_message
 
 
 class Phase1PastData:
@@ -31,9 +32,13 @@ class Phase1PastData:
         print(f"대상 종목: {len(KOSPI_100)}개")
         print("="*50)
 
+        # Slack 알림: Phase 1 시작
+        slack_message(f"📊 Phase 1 시작 - KOSPI 100 종목 전일 데이터 수집")
+
         # 캐시 확인
         if self._load_cache():
             print("✅ 오늘 캐시된 데이터 사용")
+            slack_message(f"✅ Phase 1: 캐시 사용 ({len(self.cached_data)}개 종목)")
             return self.cached_data
 
         # 전일 날짜 계산 (주말 고려)
@@ -79,6 +84,13 @@ class Phase1PastData:
         print(f"❌ 실패: {fail_count}개")
         print(f"완료 시간: {datetime.now().strftime('%H:%M:%S')}")
         print("="*50)
+
+        # Slack 알림: Phase 1 완료
+        slack_msg = f"✅ Phase 1 완료\n"
+        slack_msg += f"• 성공: {success_count}개\n"
+        slack_msg += f"• 실패: {fail_count}개\n"
+        slack_msg += f"• 시간: {datetime.now().strftime('%H:%M:%S')}"
+        slack_message(slack_msg)
 
         # 캐시 저장
         if success_count > 0:

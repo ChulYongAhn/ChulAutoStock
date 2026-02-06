@@ -8,6 +8,7 @@ import json
 import os
 from datetime import datetime
 from typing import Dict, List, Optional
+from slack_service import slack_message
 
 
 class Phase3Scoring:
@@ -46,8 +47,12 @@ class Phase3Scoring:
         print(f"평가 대상: {len(self.filtered_stocks)}개 종목")
         print("="*50)
 
+        # Slack 알림: Phase 3 시작
+        slack_message(f"🎯 Phase 3 시작 - 최종 선정 ({len(self.filtered_stocks)}개 종목 평가)")
+
         if not self.filtered_stocks:
             print("❌ 평가할 종목이 없습니다.")
+            slack_message("❌ Phase 3: 평가할 종목 없음")
             return []
 
         # 스코어링 수행
@@ -188,6 +193,9 @@ class Phase3Scoring:
         print("[ 🏆 최종 선정 종목 TOP 3 ]")
         print("="*50)
 
+        # Slack 메시지 구성
+        slack_msg = "🏆 **Phase 3 완료 - 최종 선정 TOP 3**\n\n"
+
         for rank, stock in enumerate(self.top_stocks, 1):
             print(f"\n{rank}위: {stock['종목명']} ({stock['종목코드']})")
             print(f"  총점: {stock['총점']:.2f}점")
@@ -202,9 +210,24 @@ class Phase3Scoring:
                 weight = self.weights[key]
                 print(f"    {key}: {score:.1f}점 (가중치 {weight*100:.0f}%)")
 
+            # Slack 메시지에 추가
+            if rank == 1:
+                slack_msg += f"🥇 **{rank}위: {stock['종목명']}**\n"
+            elif rank == 2:
+                slack_msg += f"🥈 **{rank}위: {stock['종목명']}**\n"
+            else:
+                slack_msg += f"🥉 **{rank}위: {stock['종목명']}**\n"
+
+            slack_msg += f"   • 총점: {stock['총점']:.1f}점\n"
+            slack_msg += f"   • 등락률: +{stock['등락률']:.2f}%\n"
+            slack_msg += f"   • 현재가: {stock['현재가']:,}원\n\n"
+
         print("\n" + "="*50)
         print(f"스코어링 완료: {datetime.now().strftime('%H:%M:%S')}")
         print("="*50)
+
+        # Slack으로 최종 결과 전송
+        slack_message(slack_msg.rstrip())
 
     def _save_results(self):
         """결과를 파일로 저장"""

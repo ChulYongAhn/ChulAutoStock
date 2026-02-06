@@ -267,6 +267,191 @@ class KISApi:
 
         return None
 
+    def buy_stock(self, stock_code: str, quantity: int, order_type: str = "01") -> Optional[Dict]:
+        """
+        주식 매수 주문
+
+        Args:
+            stock_code: 종목 코드
+            quantity: 주문 수량
+            order_type: 주문 구분 (01: 시장가, 00: 지정가)
+
+        Returns:
+            주문 결과
+        """
+        path = "/uapi/domestic-stock/v1/trading/order-cash"
+
+        # 실전/모의 구분
+        if self.auth.is_real:
+            tr_id = "TTTC0802U"  # 실전 매수
+        else:
+            tr_id = "VTTC0802U"  # 모의 매수
+
+        headers = {
+            "tr_id": tr_id
+        }
+
+        # 계좌번호 처리
+        if "-" in self.account_no:
+            account_parts = self.account_no.split("-")
+        else:
+            if len(self.account_no) == 10:
+                account_parts = [self.account_no[:8], self.account_no[8:]]
+            else:
+                return None
+
+        data = {
+            "CANO": account_parts[0],
+            "ACNT_PRDT_CD": account_parts[1],
+            "PDNO": stock_code,  # 종목코드
+            "ORD_DVSN": order_type,  # 주문구분
+            "ORD_QTY": str(quantity),  # 주문수량
+            "ORD_UNPR": "0" if order_type == "01" else "",  # 주문단가 (시장가는 0)
+        }
+
+        result = self._make_request("POST", path, headers=headers, data=data)
+
+        if result and result.get("rt_cd") == "0":
+            output = result.get("output", {})
+            return {
+                "주문번호": output.get("ODNO"),
+                "주문시간": output.get("ORD_TMD"),
+                "종목코드": stock_code,
+                "주문수량": quantity,
+                "주문구분": "시장가" if order_type == "01" else "지정가",
+                "메시지": result.get("msg1")
+            }
+        else:
+            print(f"❌ 매수 주문 실패: {result.get('msg1') if result else '응답 없음'}")
+            return None
+
+    def sell_stock(self, stock_code: str, quantity: int, order_type: str = "01") -> Optional[Dict]:
+        """
+        주식 매도 주문
+
+        Args:
+            stock_code: 종목 코드
+            quantity: 주문 수량
+            order_type: 주문 구분 (01: 시장가, 00: 지정가)
+
+        Returns:
+            주문 결과
+        """
+        path = "/uapi/domestic-stock/v1/trading/order-cash"
+
+        # 실전/모의 구분
+        if self.auth.is_real:
+            tr_id = "TTTC0801U"  # 실전 매도
+        else:
+            tr_id = "VTTC0801U"  # 모의 매도
+
+        headers = {
+            "tr_id": tr_id
+        }
+
+        # 계좌번호 처리
+        if "-" in self.account_no:
+            account_parts = self.account_no.split("-")
+        else:
+            if len(self.account_no) == 10:
+                account_parts = [self.account_no[:8], self.account_no[8:]]
+            else:
+                return None
+
+        data = {
+            "CANO": account_parts[0],
+            "ACNT_PRDT_CD": account_parts[1],
+            "PDNO": stock_code,  # 종목코드
+            "ORD_DVSN": order_type,  # 주문구분
+            "ORD_QTY": str(quantity),  # 주문수량
+            "ORD_UNPR": "0" if order_type == "01" else "",  # 주문단가 (시장가는 0)
+        }
+
+        result = self._make_request("POST", path, headers=headers, data=data)
+
+        if result and result.get("rt_cd") == "0":
+            output = result.get("output", {})
+            return {
+                "주문번호": output.get("ODNO"),
+                "주문시간": output.get("ORD_TMD"),
+                "종목코드": stock_code,
+                "주문수량": quantity,
+                "주문구분": "시장가" if order_type == "01" else "지정가",
+                "메시지": result.get("msg1")
+            }
+        else:
+            print(f"❌ 매도 주문 실패: {result.get('msg1') if result else '응답 없음'}")
+            return None
+
+    def get_orders(self) -> Optional[list]:
+        """
+        주문 내역 조회
+
+        Returns:
+            주문 리스트
+        """
+        path = "/uapi/domestic-stock/v1/trading/inquire-daily-ccld"
+
+        # 실전/모의 구분
+        if self.auth.is_real:
+            tr_id = "TTTC8001R"  # 실전
+        else:
+            tr_id = "VTTC8001R"  # 모의
+
+        headers = {
+            "tr_id": tr_id
+        }
+
+        # 계좌번호 처리
+        if "-" in self.account_no:
+            account_parts = self.account_no.split("-")
+        else:
+            if len(self.account_no) == 10:
+                account_parts = [self.account_no[:8], self.account_no[8:]]
+            else:
+                return None
+
+        from datetime import datetime
+        today = datetime.now().strftime("%Y%m%d")
+
+        params = {
+            "CANO": account_parts[0],
+            "ACNT_PRDT_CD": account_parts[1],
+            "INQR_STRT_DT": today,  # 조회시작일
+            "INQR_END_DT": today,  # 조회종료일
+            "SLL_BUY_DVSN_CD": "00",  # 매도매수구분 (00: 전체)
+            "INQR_DVSN": "00",  # 조회구분
+            "PDNO": "",  # 종목번호 (전체)
+            "CCLD_DVSN": "00",  # 체결구분 (00: 전체)
+            "ORD_GNO_BRNO": "",
+            "ODNO": "",  # 주문번호
+            "INQR_DVSN_3": "00",
+            "INQR_DVSN_1": "",
+            "CTX_AREA_FK100": "",
+            "CTX_AREA_NK100": ""
+        }
+
+        result = self._make_request("GET", path, headers=headers, params=params)
+
+        if result and result.get("rt_cd") == "0":
+            orders = []
+            for item in result.get("output1", []):
+                orders.append({
+                    "주문번호": item.get("odno"),
+                    "종목코드": item.get("pdno"),
+                    "종목명": item.get("prdt_name"),
+                    "매매구분": "매수" if item.get("sll_buy_dvsn_cd") == "02" else "매도",
+                    "주문수량": int(item.get("ord_qty", 0)),
+                    "체결수량": int(item.get("tot_ccld_qty", 0)),
+                    "체결단가": float(item.get("avg_prvs", 0)),
+                    "주문시간": item.get("ord_tmd"),
+                    "체결시간": item.get("ccld_tmd"),
+                    "주문상태": item.get("ord_gno_brno")
+                })
+            return orders
+
+        return None
+
 
 # 테스트 코드
 if __name__ == "__main__":

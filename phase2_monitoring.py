@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from kis_api import KISApi
 from stock_list import KOSPI_100, get_stock_name
+from slack_service import slack_message
 
 
 class Phase2Monitoring:
@@ -41,6 +42,9 @@ class Phase2Monitoring:
         print(f"시작 시간: {datetime.now().strftime('%H:%M:%S')}")
         print(f"필터링 조건: +{self.min_change_rate}% ~ +{self.max_change_rate}%")
         print("="*50)
+
+        # Slack 알림: Phase 2 시작
+        slack_message(f"👀 Phase 2 시작 - 실시간 모니터링 (+{self.min_change_rate}%~+{self.max_change_rate}%)")
 
         # 전일 데이터 확인
         if not self.past_data:
@@ -145,17 +149,35 @@ class Phase2Monitoring:
 
         if not self.filtered_stocks:
             print("⚠️  조건에 맞는 종목이 없습니다.")
+            slack_message("⚠️ Phase 2: 조건 만족 종목 없음")
             return
 
         print(f"\n📊 필터링된 종목: {len(self.filtered_stocks)}개\n")
 
-        for idx, stock in enumerate(self.filtered_stocks, 1):
+        # Slack 알림: Phase 2 결과
+        slack_msg = f"📊 Phase 2 결과 - {len(self.filtered_stocks)}개 종목\n"
+
+        for idx, stock in enumerate(self.filtered_stocks[:3], 1):  # 상위 3개만 Slack 전송
             print(f"{idx:2d}. {stock['종목명']} ({stock['종목코드']})")
             print(f"    현재가: {stock['현재가']:,}원 (전일: {stock['전일종가']:,}원)")
             print(f"    등락률: +{stock['등락률']:.2f}%")
             print(f"    거래량: {stock['거래량']:,}주")
             print(f"    거래대금: {stock['거래대금']:,}원")
             print()
+
+            # Slack 메시지 구성
+            slack_msg += f"{idx}. {stock['종목명']}: +{stock['등락률']:.2f}%\n"
+
+        # 나머지 종목도 터미널에는 출력
+        for idx, stock in enumerate(self.filtered_stocks[3:], 4):
+            print(f"{idx:2d}. {stock['종목명']} ({stock['종목코드']})")
+            print(f"    현재가: {stock['현재가']:,}원 (전일: {stock['전일종가']:,}원)")
+            print(f"    등락률: +{stock['등락률']:.2f}%")
+            print(f"    거래량: {stock['거래량']:,}주")
+            print(f"    거래대금: {stock['거래대금']:,}원")
+            print()
+
+        slack_message(slack_msg)
 
     def get_filtered_stocks(self) -> List[Dict]:
         """

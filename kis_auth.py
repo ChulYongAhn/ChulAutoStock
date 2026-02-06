@@ -17,19 +17,32 @@ load_dotenv()
 class KISAuth:
     """한국투자증권 API 인증 클래스"""
 
-    def __init__(self, is_real: bool = True):
+    def __init__(self, is_real: bool = None):
         """
         초기화
         Args:
-            is_real: True=실전, False=모의투자
+            is_real: True=실전, False=모의투자, None=.env에서 읽기
         """
-        self.is_real = is_real
-        self.app_key = os.getenv("KIS_APP_KEY")
-        self.app_secret = os.getenv("KIS_APP_SECRET")
-        self.account_no = os.getenv("KIS_ACCOUNT_NO")
+        # .env에서 모드 설정 읽기
+        if is_real is None:
+            env_mode = os.getenv("IS_REAL_TRADING", "false").lower()
+            self.is_real = env_mode == "true"
+        else:
+            self.is_real = is_real
+
+        # 모드에 따라 다른 API 키 사용
+        if self.is_real:
+            self.app_key = os.getenv("KIS_APP_KEY")
+            self.app_secret = os.getenv("KIS_APP_SECRET")
+            self.account_no = os.getenv("KIS_ACCOUNT_NO")
+        else:
+            # 모의투자용 키 사용 (없으면 실전 키로 폴백)
+            self.app_key = os.getenv("KIS_APP_KEY_VIRTUAL") or os.getenv("KIS_APP_KEY")
+            self.app_secret = os.getenv("KIS_APP_SECRET_VIRTUAL") or os.getenv("KIS_APP_SECRET")
+            self.account_no = os.getenv("KIS_ACCOUNT_NO_VIRTUAL") or os.getenv("KIS_ACCOUNT_NO")
 
         # API URL 설정
-        if is_real:
+        if self.is_real:
             self.base_url = "https://openapi.koreainvestment.com:9443"
         else:
             self.base_url = "https://openapivts.koreainvestment.com:29443"
