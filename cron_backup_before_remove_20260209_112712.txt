@@ -1,0 +1,1 @@
+28 8 * * 1-5 cd /Users/chulyong/Documents/RecentProjects/ChulAutoStock && /opt/homebrew/opt/python@3.11/bin/python3.11 main.py >> /Users/chulyong/Documents/RecentProjects/ChulAutoStock/trading.log 2>&1
