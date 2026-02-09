@@ -24,6 +24,8 @@ env/
 config.yaml
 config.json
 kis_token.json
+credentials.json
+*credentials*.json
 
 # 캐시 파일
 past_data_cache.json

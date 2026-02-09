@@ -9,6 +9,7 @@ import os
 from datetime import datetime
 from typing import Dict, List, Optional
 from slack_service import slack_message
+from AutoStockSetting import TOP_STOCKS_COUNT, SCORING_WEIGHTS
 
 
 class Phase3Scoring:
@@ -26,7 +27,8 @@ class Phase3Scoring:
         self.top_stocks = []
         self.result_file = f"scoring_result_{datetime.now().strftime('%Y%m%d')}.json"
 
-        # 스코어링 가중치
+        # 스코어링 가중치 (설정 파일에서 가져오기)
+        # AutoStockSetting.py의 SCORING_WEIGHTS 사용 가능
         self.weights = {
             '등락률': 0.35,      # 35% - 상승률
             '거래량증가율': 0.25,  # 25% - 거래량 증가
@@ -184,17 +186,17 @@ class Phase3Scoring:
         return self._normalize(log_value, log_min, log_max)
 
     def _select_top_stocks(self):
-        """상위 3개 종목 선정"""
-        self.top_stocks = self.scored_stocks[:3]
+        """상위 종목 선정 (AutoStockSetting.TOP_STOCKS_COUNT 사용)"""
+        self.top_stocks = self.scored_stocks[:TOP_STOCKS_COUNT]
 
     def _print_results(self):
         """결과 출력"""
         print("\n" + "="*50)
-        print("[ 🏆 최종 선정 종목 TOP 3 ]")
+        print(f"[ 🏆 최종 선정 종목 TOP {TOP_STOCKS_COUNT} ]")
         print("="*50)
 
         # Slack 메시지 구성
-        slack_msg = "🏆 **Phase 3 완료 - 최종 선정 TOP 3**\n\n"
+        slack_msg = f"🏆 **Phase 3 완료 - 최종 선정 TOP {TOP_STOCKS_COUNT}**\n\n"
 
         for rank, stock in enumerate(self.top_stocks, 1):
             print(f"\n{rank}위: {stock['종목명']} ({stock['종목코드']})")

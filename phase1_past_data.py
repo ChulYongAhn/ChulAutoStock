@@ -9,7 +9,7 @@ import os
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 from pykrx import stock
-from stock_list import KOSPI_100, get_stock_name
+from AutoStockSetting import KOSPI_100, get_stock_name
 from slack_service import slack_message
 
 

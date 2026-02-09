@@ -6,8 +6,12 @@ Phase 2: 실시간 모니터링
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from kis_api import KISApi
-from stock_list import KOSPI_100, get_stock_name
+from AutoStockSetting import KOSPI_100, get_stock_name
 from slack_service import slack_message
+from AutoStockSetting import (
+    MIN_CHANGE_RATE, MAX_CHANGE_RATE, MAX_FILTERED_STOCKS,
+    TOP_STOCKS_COUNT
+)
 
 
 class Phase2Monitoring:
@@ -24,11 +28,12 @@ class Phase2Monitoring:
         self.api = api
         self.past_data = past_data
         self.filtered_stocks = []
+        self.first_run = True  # 첫 실행 여부 추적
 
-        # 필터링 조건
-        self.min_change_rate = 2.0  # 최소 상승률 2%
-        self.max_change_rate = 4.0  # 최대 상승률 4%
-        self.max_filtered_stocks = 10  # 최대 필터링 종목 수
+        # 필터링 조건 (AutoStockSetting에서 가져오기)
+        self.min_change_rate = MIN_CHANGE_RATE  # 최소 상승률
+        self.max_change_rate = MAX_CHANGE_RATE  # 최대 상승률
+        self.max_filtered_stocks = MAX_FILTERED_STOCKS  # 최대 필터링 종목 수
 
     def run(self) -> List[Dict]:
         """
@@ -43,8 +48,10 @@ class Phase2Monitoring:
         print(f"필터링 조건: +{self.min_change_rate}% ~ +{self.max_change_rate}%")
         print("="*50)
 
-        # Slack 알림: Phase 2 시작
-        slack_message(f"👀 Phase 2 시작 - 실시간 모니터링 (+{self.min_change_rate}%~+{self.max_change_rate}%)")
+        # Slack 알림: Phase 2 시작 (첫 실행시에만)
+        if self.first_run:
+            slack_message(f"👀 Phase 2 시작 - 실시간 모니터링 (+{self.min_change_rate}%~+{self.max_change_rate}%)")
+            self.first_run = False
 
         # 전일 데이터 확인
         if not self.past_data:
@@ -99,8 +106,8 @@ class Phase2Monitoring:
         # 필터링: +2% ~ +4% 범위
         self.filtered_stocks = self._filter_stocks(monitoring_results)
 
-        # 결과 출력
-        self._print_results()
+        # 결과 출력 (기본적으로 Slack 메시지 전송 안 함)
+        self._print_results(send_slack=False)
 
         return self.filtered_stocks
 
@@ -141,7 +148,7 @@ class Phase2Monitoring:
         # 상위 10개만 선택
         return filtered[:self.max_filtered_stocks]
 
-    def _print_results(self):
+    def _print_results(self, send_slack=True):
         """결과 출력"""
         print("\n" + "="*50)
         print("[ Phase 2 필터링 결과 ]")
@@ -149,15 +156,17 @@ class Phase2Monitoring:
 
         if not self.filtered_stocks:
             print("⚠️  조건에 맞는 종목이 없습니다.")
-            slack_message("⚠️ Phase 2: 조건 만족 종목 없음")
+            # Slack 메시지는 send_slack이 True일 때만
+            if send_slack:
+                slack_message("⚠️ Phase 2: 조건 만족 종목 없음")
             return
 
         print(f"\n📊 필터링된 종목: {len(self.filtered_stocks)}개\n")
 
-        # Slack 알림: Phase 2 결과
-        slack_msg = f"📊 Phase 2 결과 - {len(self.filtered_stocks)}개 종목\n"
+        # Slack 알림: Phase 2 결과 (send_slack이 True일 때만)
+        slack_msg = f"📊 Phase 2 결과 - {len(self.filtered_stocks)}개 종목\n" if send_slack else None
 
-        for idx, stock in enumerate(self.filtered_stocks[:3], 1):  # 상위 3개만 Slack 전송
+        for idx, stock in enumerate(self.filtered_stocks[:TOP_STOCKS_COUNT], 1):  # TOP_STOCKS_COUNT개만 Slack 전송
             print(f"{idx:2d}. {stock['종목명']} ({stock['종목코드']})")
             print(f"    현재가: {stock['현재가']:,}원 (전일: {stock['전일종가']:,}원)")
             print(f"    등락률: +{stock['등락률']:.2f}%")
@@ -165,11 +174,12 @@ class Phase2Monitoring:
             print(f"    거래대금: {stock['거래대금']:,}원")
             print()
 
-            # Slack 메시지 구성
-            slack_msg += f"{idx}. {stock['종목명']}: +{stock['등락률']:.2f}%\n"
+            # Slack 메시지 구성 (send_slack이 True일 때만)
+            if send_slack and slack_msg:
+                slack_msg += f"{idx}. {stock['종목명']}: +{stock['등락률']:.2f}%\n"
 
         # 나머지 종목도 터미널에는 출력
-        for idx, stock in enumerate(self.filtered_stocks[3:], 4):
+        for idx, stock in enumerate(self.filtered_stocks[TOP_STOCKS_COUNT:], TOP_STOCKS_COUNT + 1):
             print(f"{idx:2d}. {stock['종목명']} ({stock['종목코드']})")
             print(f"    현재가: {stock['현재가']:,}원 (전일: {stock['전일종가']:,}원)")
             print(f"    등락률: +{stock['등락률']:.2f}%")
@@ -177,7 +187,9 @@ class Phase2Monitoring:
             print(f"    거래대금: {stock['거래대금']:,}원")
             print()
 
-        slack_message(slack_msg)
+        # Slack 메시지 전송 (send_slack이 True일 때만)
+        if send_slack and slack_msg:
+            slack_message(slack_msg)
 
     def get_filtered_stocks(self) -> List[Dict]:
         """
@@ -187,6 +199,18 @@ class Phase2Monitoring:
             필터링된 종목 리스트
         """
         return self.filtered_stocks
+
+    def send_final_result(self):
+        """Phase 2 최종 결과를 Slack으로 전송 (Phase 3 직전에 호출)"""
+        if not self.filtered_stocks:
+            slack_message("⚠️ Phase 2 최종 결과: 조건 만족 종목 없음")
+            return
+
+        slack_msg = f"📊 Phase 2 최종 결과 - {len(self.filtered_stocks)}개 종목\n"
+        for idx, stock in enumerate(self.filtered_stocks[:TOP_STOCKS_COUNT], 1):
+            slack_msg += f"{idx}. {stock['종목명']}: +{stock['등락률']:.2f}%\n"
+
+        slack_message(slack_msg)
 
     def run_continuous(self, max_iterations: int = None):
         """

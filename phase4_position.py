@@ -8,30 +8,44 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from kis_api import KISApi
 from slack_service import slack_message, slack_trade
+from AutoStockSetting import (
+    PROFIT_TARGET, STOP_LOSS,
+    FUND_ALLOCATION_MODE, MONITORING_INTERVAL
+)
+from google_sheet_recorder import GoogleSheetRecorder
 
 
 class Phase4Position:
     """포지션 관리 클래스"""
 
-    def __init__(self, api: KISApi):
+    def __init__(self, api: KISApi, use_google_sheets: bool = True):
         """
         초기화
 
         Args:
             api: KIS API 클라이언트
+            use_google_sheets: 구글 시트 기록 사용 여부
         """
         self.api = api
         self.positions = {}  # 보유 종목 정보
         self.target_stocks = []  # Phase 3에서 선정된 종목
 
-        # 익절/손절 기준
-        self.PROFIT_TARGET_1 = 4.0  # +4% 전량 매도
-        self.PROFIT_TARGET_2 = 3.0  # +3% 부분 매도
-        self.STOP_LOSS = -2.0  # -2% 손절
-        self.WARNING_LEVEL = -1.5  # -1.5% 경고
+        # 익절/손절 기준 (AutoStockSetting에서 가져옴)
+        self.PROFIT_TARGET = PROFIT_TARGET  # 익절 목표
+        self.STOP_LOSS = STOP_LOSS  # 손절
 
         # 매매 기록
         self.trade_history = []
+
+        # 구글 시트 레코더 초기화
+        self.sheet_recorder = None
+        if use_google_sheets:
+            try:
+                self.sheet_recorder = GoogleSheetRecorder()
+                print("✅ 구글 시트 연동 활성화")
+            except Exception as e:
+                print(f"⚠️ 구글 시트 연동 실패: {e}")
+                print("   로컬 기록만 진행합니다.")
 
     def set_target_stocks(self, stocks: List[Dict]):
         """
@@ -64,9 +78,9 @@ class Phase4Position:
         available_cash = balance.get("주문가능현금", 0)
         print(f"\n💰 주문 가능 현금: {available_cash:,}원")
 
-        if available_cash < 100000:  # 최소 10만원
-            print("⚠️ 주문 가능 현금 부족")
-            slack_message(f"⚠️ Phase 4: 주문 가능 현금 부족 ({available_cash:,}원)")
+        if available_cash <= 0:
+            print("⚠️ 주문 가능 현금이 없습니다")
+            slack_message(f"⚠️ Phase 4: 주문 가능 현금 없음")
             return False
 
         # 종목당 투자 금액 계산 (균등 분할)
@@ -132,6 +146,17 @@ class Phase4Position:
                             price=current_price,
                             amount=quantity * current_price
                         )
+
+                        # 구글 시트 기록
+                        if self.sheet_recorder:
+                            self.sheet_recorder.record_buy(
+                                code=code,
+                                name=name,
+                                price=current_price,
+                                quantity=quantity,
+                                amount=quantity * current_price,
+                                memo=f"Phase3 선정 종목"
+                            )
                     else:
                         print(f"   ❌ 주문 실패")
                         buy_details.append(f"❌ {name}: 주문 실패")
@@ -215,38 +240,18 @@ class Phase4Position:
         stock_name = position.get("종목명", "")
 
         # 1. +4% 이상: 전량 매도
-        if profit_rate >= self.PROFIT_TARGET_1:
+        if profit_rate >= self.PROFIT_TARGET:
             print(f"   🎯 익절 목표 달성! +{profit_rate:.2f}% → 전량 매도")
             slack_message(f"🎯 익절 목표 달성! {stock_name} +{profit_rate:.2f}% → 전량 매도")
-            self._execute_sell(code, quantity, "익절(+4%)")
+            self._execute_sell(code, quantity, f"익절(+{self.PROFIT_TARGET}%)")
             position["상태"] = "매도완료"
 
-        # 2. +3% 도달 후 하락: 50% 매도
-        elif profit_rate >= self.PROFIT_TARGET_2:
-            if position.get("최고수익률", 0) > profit_rate:
-                # 고점 대비 하락
-                sell_qty = quantity // 2
-                if sell_qty > 0 and not position.get("부분매도"):
-                    print(f"   📉 고점 대비 하락 → 50% 매도")
-                    slack_message(f"📉 {stock_name} 고점 대비 하락 → 50% 매도")
-                    self._execute_sell(code, sell_qty, "부분익절(+3%)")
-                    position["부분매도"] = True
-                    position["매수수량"] = quantity - sell_qty
-            else:
-                position["최고수익률"] = profit_rate
-
-        # 3. -2% 이하: 전량 손절
+        # 2. -2% 이하: 전량 손절
         elif profit_rate <= self.STOP_LOSS:
             print(f"   ⛔ 손절선 도달! {profit_rate:.2f}% → 전량 매도")
             slack_message(f"⛔ 손절! {stock_name} {profit_rate:.2f}% → 전량 매도")
             self._execute_sell(code, quantity, "손절(-2%)")
             position["상태"] = "손절완료"
-
-        # 4. -1.5% 경고
-        elif profit_rate <= self.WARNING_LEVEL and not position.get("경고"):
-            print(f"   ⚠️ 손실 경고: {profit_rate:.2f}%")
-            slack_message(f"⚠️ 손실 경고: {stock_name} {profit_rate:.2f}%")
-            position["경고"] = True
 
     def _execute_sell(self, code: str, quantity: int, reason: str):
         """
@@ -290,6 +295,25 @@ class Phase4Position:
                 amount=quantity * current_price,
                 profit=profit
             )
+
+            # 구글 시트 기록
+            if self.sheet_recorder:
+                # 매도 유형 결정
+                if "익절" in reason:
+                    sell_type = "익절"
+                elif "손절" in reason:
+                    sell_type = "손절"
+                else:
+                    sell_type = "기타"
+
+                self.sheet_recorder.record_sell(
+                    code=code,
+                    name=stock_name,
+                    price=current_price,
+                    quantity=quantity,
+                    sell_type=sell_type,
+                    memo=reason
+                )
         else:
             print(f"      ❌ 매도 주문 실패")
 
@@ -341,6 +365,17 @@ class Phase4Position:
                         amount=quantity * current_price,
                         profit=profit_rate
                     )
+
+                    # 구글 시트 기록
+                    if self.sheet_recorder:
+                        self.sheet_recorder.record_sell(
+                            code=code,
+                            name=name,
+                            price=current_price,
+                            quantity=quantity,
+                            sell_type="청산",
+                            memo=f"09:59 일일청산 (수익률: {profit_rate:+.2f}%)"
+                        )
                 else:
                     print(f"   ❌ 매도 주문 실패")
                     sell_results.append(f"❌ {name}: 매도 실패")
@@ -384,15 +419,19 @@ class Phase4Position:
         """
         current_time = datetime.now()
 
-        # 09:00 ~ 09:59 동안 5초 간격으로 모니터링
+        # 09:00 ~ 09:59 동안 모니터링 (AutoStockSetting.MONITORING_INTERVAL 사용)
         while current_time.hour == 9 and current_time.minute < 59:
             self.monitor_positions()
-            time.sleep(5)  # 5초 대기
+            time.sleep(MONITORING_INTERVAL)  # 설정된 간격으로 대기
             current_time = datetime.now()
 
         # 09:59 - 전량 청산
         if current_time.hour == 9 and current_time.minute == 59:
             self.close_all_positions()
+
+            # 구글 시트 일별 통계 업데이트
+            if self.sheet_recorder:
+                self.sheet_recorder.update_daily_stats()
 
         return self.get_daily_report()
 

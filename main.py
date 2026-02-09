@@ -212,6 +212,9 @@ class ChulAutoStock:
     def phase3_final_selection(self):
         """Phase 3: 최종 종목 선정"""
         if hasattr(self, 'phase2_instance'):
+            # Phase 2 최종 결과를 Slack으로 전송
+            self.phase2_instance.send_final_result()
+
             filtered = self.phase2_instance.get_filtered_stocks()
 
             if filtered:

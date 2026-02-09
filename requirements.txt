@@ -1,15 +1,7 @@
-# 한국투자증권 API 주식 모니터링 프로그램 필수 패키지
-# Python 3.11.14
-
-# API 통신
 requests==2.32.5
-
-# 데이터 처리
 pandas==2.3.3
-numpy==1.26.4
-
-# 한국 주식 데이터
-pykrx==1.2.3
-
-# 환경 변수 관리
-python-dotenv==1.2.1
+python-dotenv==1.0.1
+gspread==6.2.1
+google-auth==2.48.0
+google-auth-oauthlib==1.2.4
+google-auth-httplib2==0.3.0

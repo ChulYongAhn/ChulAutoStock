@@ -1,9 +1,79 @@
 """
-코스피 주요 종목 리스트
-2025년 기준 시가총액 상위 100개 종목
+ChulAutoStock 전역 설정 파일
+모든 설정값을 한 곳에서 관리
 """
 
-# 코스피 100개 종목 (시가총액 순)
+# ====================================
+# 종목 선정 설정
+# ====================================
+
+# 최종 선정 종목 수 (Phase 3)
+TOP_STOCKS_COUNT = 1  # TOP 몇 개를 선정할지 (1, 3, 5 등)
+
+# 자금 분배 방식
+FUND_ALLOCATION_MODE = "equal"  # 균등분배만 사용
+
+# ====================================
+# 필터링 조건 (Phase 2)
+# ====================================
+
+# 등락률 필터 범위
+MIN_CHANGE_RATE = 2.0  # 최소 상승률 (%)
+MAX_CHANGE_RATE = 4.0  # 최대 상승률 (%)
+MAX_FILTERED_STOCKS = 10  # Phase 2에서 필터링할 최대 종목 수
+
+# 거래량 필터
+MIN_VOLUME = 1000000  # 최소 거래량
+MIN_VOLUME_RATIO = 1.5  # 평균 거래량 대비 최소 비율
+
+# ====================================
+# 매매 설정 (Phase 4)
+# ====================================
+
+# 익절/손절 기준
+PROFIT_TARGET = 4.0  # +4% 전량 매도
+STOP_LOSS = -2.0  # -2% 손절
+
+# 모니터링 주기
+MONITORING_INTERVAL = 5  # 초 단위
+
+# ====================================
+# 스코어링 가중치 (Phase 3)
+# ====================================
+
+SCORING_WEIGHTS = {
+    "등락률": 0.3,
+    "거래량": 0.2,
+    "거래대금": 0.2,
+    "체결강도": 0.15,
+    "시가총액": 0.15
+}
+
+# ====================================
+# 시간 설정
+# ====================================
+
+# Phase 별 실행 시간
+PHASE_SCHEDULE = {
+    "phase0": "08:29",  # API 인증
+    "phase1": "08:30",  # 전일 데이터 수집
+    "phase2": "08:40",  # 실시간 모니터링
+    "phase3": "08:55",  # 스코어링 및 선정
+    "phase4_buy": "08:59",  # 매수 주문
+    "phase4_monitor": "09:00-09:59",  # 포지션 모니터링
+    "phase5": "09:59"  # 일일 청산
+}
+
+# 장 운영 시간
+MARKET_OPEN = "09:00"
+MARKET_CLOSE = "15:30"
+PRE_MARKET_OPEN = "08:30"
+
+# ====================================
+# 코스피 주요 종목 리스트
+# 2025년 기준 시가총액 상위 100개 종목
+# ====================================
+
 KOSPI_100 = {
     # 시가총액 1위 ~ 10위
     "005930": "삼성전자",
@@ -129,7 +199,10 @@ KOSPI_100 = {
 # Phase 2에서 사용할 종목 리스트 (딕셔너리 키만 추출)
 STOCK_CODES = list(KOSPI_100.keys())
 
-# 종목 이름으로 코드 찾기 함수
+# ====================================
+# 유틸리티 함수
+# ====================================
+
 def get_stock_code(name: str) -> str:
     """종목명으로 종목코드 찾기"""
     for code, stock_name in KOSPI_100.items():
@@ -137,14 +210,44 @@ def get_stock_code(name: str) -> str:
             return code
     return None
 
-# 종목 코드로 이름 찾기 함수
 def get_stock_name(code: str) -> str:
     """종목코드로 종목명 찾기"""
     return KOSPI_100.get(code, "Unknown")
 
+def get_top_stocks_count():
+    """최종 선정 종목 수 반환"""
+    return TOP_STOCKS_COUNT
+
+def get_fund_allocation_mode():
+    """자금 분배 방식 반환"""
+    return FUND_ALLOCATION_MODE
+
+def get_profit_targets():
+    """익절 목표 반환"""
+    return {
+        "target": PROFIT_TARGET,
+        "stop_loss": STOP_LOSS
+    }
+
+def get_filter_conditions():
+    """필터링 조건 반환"""
+    return {
+        "change_rate": (MIN_CHANGE_RATE, MAX_CHANGE_RATE),
+        "volume": MIN_VOLUME,
+        "volume_ratio": MIN_VOLUME_RATIO
+    }
+
+def print_settings():
+    """현재 설정값 출력"""
+    print("="*50)
+    print("ChulAutoStock 설정")
+    print("="*50)
+    print(f"• TOP 종목 수: {TOP_STOCKS_COUNT}개")
+    print(f"• 자금 분배: {FUND_ALLOCATION_MODE}")
+    print(f"• 등락률 필터: {MIN_CHANGE_RATE}% ~ {MAX_CHANGE_RATE}%")
+    print(f"• 익절 목표: +{PROFIT_TARGET}%")
+    print(f"• 손절선: {STOP_LOSS}%")
+    print("="*50)
 
 if __name__ == "__main__":
-    print(f"총 {len(KOSPI_100)}개 종목")
-    print("\n시가총액 상위 10개:")
-    for i, (code, name) in enumerate(list(KOSPI_100.items())[:10], 1):
-        print(f"{i:2d}. {code}: {name}")
+    print_settings()
