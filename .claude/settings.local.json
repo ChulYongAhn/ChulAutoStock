@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(/opt/homebrew/Caskroom/miniconda/base/bin/python -m pip:*)",
+      "Bash(crontab:*)",
+      "Bash(/opt/homebrew/Caskroom/miniconda/base/bin/python:*)"
+    ]
+  }
+}

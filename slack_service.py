@@ -543,6 +543,11 @@ def slack_trade(action: str, stock_code: str, stock_name: str,
     )
 
 
+def slack_daily_report(report: Dict, is_real: bool = True) -> bool:
+    """일일 리포트 전송"""
+    return get_slack().send_daily_report(report, is_real)
+
+
 # 테스트 코드
 if __name__ == "__main__":
     print("Slack 서비스 테스트")

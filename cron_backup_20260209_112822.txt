@@ -1,0 +1,16 @@
+
+# ChulAutoStock 자동 거래 스케줄
+# 생성일: 2026-02-06 13:02:02
+
+# 환경 변수
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+
+# 매일 08:25 시작 (월-금)
+25 8 * * 1-5 /Users/doil/Documents/RecentProjects/ChulAutoStock/start.sh
+
+# 매일 10:05 종료 (월-금)
+5 10 * * 1-5 /Users/doil/Documents/RecentProjects/ChulAutoStock/stop.sh
+
+# 매일 자정 로그 정리 (30일 이상)
+0 0 * * * find /Users/doil/Documents/RecentProjects/ChulAutoStock/logs -name "*.log" -mtime +30 -delete
