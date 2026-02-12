@@ -48,7 +48,7 @@ class ChulAutoStock:
         self.RESET_TIME = (8, 28)     # 08:28 초기화
         self.WAKE_TIME = (8, 29)      # 08:29 시작
         self.PHASE1_TIME = (8, 30)    # 08:30 Phase 1
-        self.PHASE2_TIME = (8, 35)    # 08:35 Phase 2 시작
+        self.PHASE2_TIME = (8, 51)    # 08:51 Phase 2 (프리장 종료)
         self.PHASE3_TIME = (8, 58)    # 08:58 Phase 3
         self.MARKET_OPEN = (9, 0)     # 09:00 장 시작
         self.PHASE5_TIME = (9, 59)    # 09:59 Phase 5
@@ -60,6 +60,7 @@ class ChulAutoStock:
         self.phase_completed = {
             'phase0': False,
             'phase1': False,
+            'phase2': False,
             'phase2_started': False,
             'phase3': False,
             'phase4': False,
@@ -111,14 +112,13 @@ class ChulAutoStock:
                     elif self.auth and self.api:
                         self.phase1_past_data()
 
-                # 08:35 ~ 08:57 - Phase 2 반복 (Phase 1 완료 필수)
-                elif self.PHASE2_TIME <= current_time < self.PHASE3_TIME:
+                # 08:51 - Phase 2 (프리장 종료, Phase 1 완료 필수)
+                elif current_time == self.PHASE2_TIME and not self.phase_completed['phase2']:
                     if not self.phase_completed['phase1']:
-                        if not self.phase_completed.get('phase2_warning'):
-                            print("⚠️ Phase 1이 완료되지 않아 Phase 2 실행 불가")
-                            self.phase_completed['phase2_warning'] = True
+                        print("⚠️ Phase 1이 완료되지 않아 Phase 2 건너뜀")
                     elif self.auth and self.api and self.past_data:
                         self.phase2_monitoring()
+                        self.phase_completed['phase2'] = True
                         self.phase_completed['phase2_started'] = True
 
                 # 08:58 - Phase 3 (Phase 2 시작 필수)
@@ -199,24 +199,22 @@ class ChulAutoStock:
         self._check_api_usage("Phase 1")
 
     def phase2_monitoring(self):
-        """Phase 2: 실시간 모니터링"""
-        if not hasattr(self, 'phase2_instance'):
-            self.phase2_instance = Phase2Monitoring(self.api, self.past_data)
+        """Phase 2: 프리장 종료 시점 모니터링"""
+        phase2 = Phase2Monitoring(self.api, self.past_data)
+        market_data = phase2.run()
 
-        filtered = self.phase2_instance.run()
-        print(f"📊 Phase 2: {len(filtered)}개 종목 필터링")
+        print(f"📊 Phase 2 완료: {len(market_data)}개 종목 데이터 수집")
 
-        # 08:57 이후에만 API 사용량 체크 (과도한 체크 방지)
-        if datetime.now().minute >= 57:
-            self._check_api_usage("Phase 2")
+        # Phase 3에서 사용할 수 있도록 인스턴스 저장
+        self.phase2_instance = phase2
+
+        self._check_api_usage("Phase 2")
 
     def phase3_final_selection(self):
         """Phase 3: 최종 종목 선정"""
         if hasattr(self, 'phase2_instance'):
-            # Phase 2 최종 결과를 Slack으로 전송
-            self.phase2_instance.send_final_result()
-
-            filtered = self.phase2_instance.get_filtered_stocks()
+            # Phase 2 데이터에서 2~4% 범위 종목만 필터링
+            filtered = self.phase2_instance.get_filtered_stocks(min_rate=2.0, max_rate=4.0)
 
             if filtered:
                 phase3 = Phase3Scoring(filtered)
@@ -241,7 +239,9 @@ class ChulAutoStock:
                 else:
                     print("⚠️ Phase 3: 선정된 종목 없음")
             else:
-                print("⚠️ Phase 3: 필터링된 종목 없음")
+                print("⚠️ Phase 3: 2~4% 범위의 종목이 없음")
+        else:
+            print("⚠️ Phase 3: Phase 2 데이터가 없음")
 
         self._check_api_usage("Phase 3")
 
@@ -322,6 +322,7 @@ class ChulAutoStock:
             self.phase_completed = {
                 'phase0': False,
                 'phase1': False,
+                'phase2': False,
                 'phase2_started': False,
                 'phase3': False,
                 'phase4': False,
@@ -403,6 +404,7 @@ class ChulAutoStock:
             'daily_reset': True,  # daily_reset은 이미 실행됨
             'phase0': False,
             'phase1': False,
+            'phase2': False,
             'phase2_started': False,
             'phase3': False,
             'phase4': False,

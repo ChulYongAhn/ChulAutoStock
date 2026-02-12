@@ -41,7 +41,7 @@ class Phase3Scoring:
         Phase 3 실행
 
         Returns:
-            상위 3개 종목 리스트
+            상위 n개 종목 리스트
         """
         print("\n" + "="*50)
         print("[ Phase 3: 스코어링 & 순위화 ]")
@@ -214,15 +214,22 @@ class Phase3Scoring:
 
             # Slack 메시지에 추가
             if rank == 1:
-                slack_msg += f"🥇 **{rank}위: {stock['종목명']}**\n"
+                slack_msg += f"🥇 **{rank}위: {stock['종목명']} ({stock['종목코드']})**\n"
             elif rank == 2:
-                slack_msg += f"🥈 **{rank}위: {stock['종목명']}**\n"
+                slack_msg += f"🥈 **{rank}위: {stock['종목명']} ({stock['종목코드']})**\n"
             else:
-                slack_msg += f"🥉 **{rank}위: {stock['종목명']}**\n"
+                slack_msg += f"🥉 **{rank}위: {stock['종목명']} ({stock['종목코드']})**\n"
 
-            slack_msg += f"   • 총점: {stock['총점']:.1f}점\n"
+            slack_msg += f"   • 총점: {stock['총점']:.2f}점\n"
+            slack_msg += f"   • 현재가: {stock['현재가']:,}원\n"
             slack_msg += f"   • 등락률: +{stock['등락률']:.2f}%\n"
-            slack_msg += f"   • 현재가: {stock['현재가']:,}원\n\n"
+            slack_msg += f"   • 거래량: {stock['거래량']:,}주\n"
+            slack_msg += f"   • 거래대금: {stock['거래대금']:,}원\n"
+            slack_msg += f"   **[점수 상세]**\n"
+            for key, score in stock['점수상세'].items():
+                weight = self.weights[key]
+                slack_msg += f"     - {key}: {score:.1f}점 (가중치 {weight*100:.0f}%)\n"
+            slack_msg += "\n"
 
         print("\n" + "="*50)
         print(f"스코어링 완료: {datetime.now().strftime('%H:%M:%S')}")

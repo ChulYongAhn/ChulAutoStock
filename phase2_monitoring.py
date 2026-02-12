@@ -1,21 +1,17 @@
 """
-Phase 2: 실시간 모니터링
-100개 종목의 현재가를 조회하고 +2% ~ +4% 범위 종목 필터링
+Phase 2: 프리장 종료 시점 모니터링
+8시 51분에 코스피100 전 종목의 전일 대비 등락률을 계산하여 슬랙으로 전송
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from kis_api import KISApi
 from AutoStockSetting import KOSPI_100, get_stock_name
 from slack_service import slack_message
-from AutoStockSetting import (
-    MIN_CHANGE_RATE, MAX_CHANGE_RATE, MAX_FILTERED_STOCKS,
-    TOP_STOCKS_COUNT
-)
 
 
 class Phase2Monitoring:
-    """Phase 2: 실시간 모니터링 및 필터링"""
+    """Phase 2: 프리장 종료 시점 등락률 모니터링"""
 
     def __init__(self, api: KISApi, past_data: Dict):
         """
@@ -27,43 +23,34 @@ class Phase2Monitoring:
         """
         self.api = api
         self.past_data = past_data
-        self.filtered_stocks = []
-        self.first_run = True  # 첫 실행 여부 추적
-
-        # 필터링 조건 (AutoStockSetting에서 가져오기)
-        self.min_change_rate = MIN_CHANGE_RATE  # 최소 상승률
-        self.max_change_rate = MAX_CHANGE_RATE  # 최대 상승률
-        self.max_filtered_stocks = MAX_FILTERED_STOCKS  # 최대 필터링 종목 수
+        self.market_data = []  # 전체 시장 데이터
 
     def run(self) -> List[Dict]:
         """
-        Phase 2 실행
+        Phase 2 실행 - 프리장 종료 시점(8:51)에 한 번만 실행
 
         Returns:
-            필터링된 종목 리스트 (최대 10개)
+            전체 종목 데이터 리스트
         """
-        print("\n" + "="*50)
-        print("[ Phase 2: 실시간 모니터링 시작 ]")
-        print(f"시작 시간: {datetime.now().strftime('%H:%M:%S')}")
-        print(f"필터링 조건: +{self.min_change_rate}% ~ +{self.max_change_rate}%")
-        print("="*50)
+        current_time = datetime.now()
 
-        # Slack 알림: Phase 2 시작 (첫 실행시에만)
-        if self.first_run:
-            slack_message(f"👀 Phase 2 시작 - 실시간 모니터링 (+{self.min_change_rate}%~+{self.max_change_rate}%)")
-            self.first_run = False
+        print("\n" + "="*50)
+        print("[ Phase 2: 프리장 종료 시점 모니터링 ]")
+        print(f"실행 시간: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print("="*50)
 
         # 전일 데이터 확인
         if not self.past_data:
             print("❌ 전일 데이터가 없습니다. Phase 1을 먼저 실행하세요.")
+            slack_message("❌ Phase 2 실행 실패: 전일 데이터 없음")
             return []
 
-        # 종목별 현재가 조회 및 등락률 계산
-        monitoring_results = []
+        # 코스피100 전 종목 현재가 조회 및 등락률 계산
+        self.market_data = []
         success_count = 0
         fail_count = 0
 
-        print("\n현재가 조회 중...")
+        print("\n코스피100 전 종목 현재가 조회 중...")
         for idx, (code, name) in enumerate(KOSPI_100.items(), 1):
             # 진행상황 표시
             if idx % 20 == 0 or idx == 1:
@@ -71,6 +58,7 @@ class Phase2Monitoring:
 
             # 전일 데이터가 없으면 스킵
             if code not in self.past_data:
+                fail_count += 1
                 continue
 
             # 현재가 조회
@@ -85,7 +73,7 @@ class Phase2Monitoring:
             change_rate = ((current_price - past_close) / past_close) * 100
 
             # 결과 저장
-            monitoring_results.append({
+            self.market_data.append({
                 '종목코드': code,
                 '종목명': name,
                 '전일종가': past_close,
@@ -97,27 +85,16 @@ class Phase2Monitoring:
 
             success_count += 1
 
-            # 대기 없이 바로 다음 종목 조회
-            # API 응답 속도에 자연스럽게 맞춰짐
-
         print(f"\n✅ 조회 성공: {success_count}개")
         print(f"❌ 조회 실패: {fail_count}개")
 
-        # 필터링: +2% ~ +4% 범위
-        self.filtered_stocks = self._filter_stocks(monitoring_results)
+        # 등락률 기준 정렬 (상승 → 하락 순)
+        self.market_data.sort(key=lambda x: x['등락률'], reverse=True)
 
-        # 결과 출력 (기본적으로 Slack 메시지 전송 안 함)
-        self._print_results(send_slack=False)
+        # 결과 출력 및 슬랙 전송
+        self._send_market_summary()
 
-        # 필터링된 종목이 있으면 Slack으로 알림
-        if self.filtered_stocks:
-            current_time = datetime.now().strftime('%H:%M:%S')
-            slack_msg = f"🎯 [{current_time}] 조건 만족 종목 발견!\n"
-            for stock in self.filtered_stocks:
-                slack_msg += f"• {stock['종목명']}: +{stock['등락률']:.2f}%\n"
-            slack_message(slack_msg)
-
-        return self.filtered_stocks
+        return self.market_data
 
     def _get_current_price(self, code: str) -> Optional[Dict]:
         """
@@ -134,138 +111,140 @@ class Phase2Monitoring:
         except Exception as e:
             return None
 
-    def _filter_stocks(self, stocks: List[Dict]) -> List[Dict]:
-        """
-        조건에 맞는 종목 필터링
-
-        Args:
-            stocks: 전체 모니터링 결과
-
-        Returns:
-            필터링된 종목 리스트
-        """
-        # 조건: +2% ~ +4% 범위
-        filtered = [
-            stock for stock in stocks
-            if self.min_change_rate <= stock['등락률'] <= self.max_change_rate
-        ]
-
-        # 등락률 기준 내림차순 정렬
-        filtered.sort(key=lambda x: x['등락률'], reverse=True)
-
-        # 상위 10개만 선택
-        return filtered[:self.max_filtered_stocks]
-
-    def _print_results(self, send_slack=True):
-        """결과 출력"""
-        print("\n" + "="*50)
-        print("[ Phase 2 필터링 결과 ]")
-        print("="*50)
-
-        if not self.filtered_stocks:
-            print("⚠️  조건에 맞는 종목이 없습니다.")
-            # Slack 메시지는 send_slack이 True일 때만
-            if send_slack:
-                slack_message("⚠️ Phase 2: 조건 만족 종목 없음")
+    def _send_market_summary(self):
+        """전체 시장 요약 정보를 슬랙으로 전송"""
+        if not self.market_data:
+            print("⚠️ 조회된 데이터가 없습니다.")
             return
 
-        print(f"\n📊 필터링된 종목: {len(self.filtered_stocks)}개\n")
+        # 통계 계산
+        up_stocks = [s for s in self.market_data if s['등락률'] > 0]
+        down_stocks = [s for s in self.market_data if s['등락률'] < 0]
+        flat_stocks = [s for s in self.market_data if s['등락률'] == 0]
 
-        # Slack 알림: Phase 2 결과 (send_slack이 True일 때만)
-        slack_msg = f"📊 Phase 2 결과 - {len(self.filtered_stocks)}개 종목\n" if send_slack else None
+        avg_change = sum(s['등락률'] for s in self.market_data) / len(self.market_data)
 
-        for idx, stock in enumerate(self.filtered_stocks[:TOP_STOCKS_COUNT], 1):  # TOP_STOCKS_COUNT개만 Slack 전송
-            print(f"{idx:2d}. {stock['종목명']} ({stock['종목코드']})")
-            print(f"    현재가: {stock['현재가']:,}원 (전일: {stock['전일종가']:,}원)")
-            print(f"    등락률: +{stock['등락률']:.2f}%")
-            print(f"    거래량: {stock['거래량']:,}주")
-            print(f"    거래대금: {stock['거래대금']:,}원")
-            print()
+        # 어제/오늘 날짜
+        today = datetime.now()
+        yesterday = self.past_data.get('date', '전일')  # past_data에 날짜가 있다면 사용
 
-            # Slack 메시지 구성 (send_slack이 True일 때만)
-            if send_slack and slack_msg:
-                slack_msg += f"{idx}. {stock['종목명']}: +{stock['등락률']:.2f}%\n"
+        # 슬랙 메시지 구성
+        slack_msg = f"""📊 **코스피100 프리장 등락률 현황**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+어제: {yesterday}
+오늘: {today.strftime('%m월 %d일 %H:%M')} 기준
 
-        # 나머지 종목도 터미널에는 출력
-        for idx, stock in enumerate(self.filtered_stocks[TOP_STOCKS_COUNT:], TOP_STOCKS_COUNT + 1):
-            print(f"{idx:2d}. {stock['종목명']} ({stock['종목코드']})")
-            print(f"    현재가: {stock['현재가']:,}원 (전일: {stock['전일종가']:,}원)")
-            print(f"    등락률: +{stock['등락률']:.2f}%")
-            print(f"    거래량: {stock['거래량']:,}주")
-            print(f"    거래대금: {stock['거래대금']:,}원")
-            print()
+"""
 
-        # Slack 메시지 전송 (send_slack이 True일 때만)
-        if send_slack and slack_msg:
-            slack_message(slack_msg)
+        # 상승 종목 (상위 20개)
+        if up_stocks:
+            slack_msg += f"🔴 **상승 종목 ({len(up_stocks)}개)**\n"
+            for stock in up_stocks[:20]:  # 상위 20개만
+                slack_msg += f"[{stock['종목명']}] {stock['전일종가']:,}원 → {stock['현재가']:,}원 (+{stock['등락률']:.2f}%)\n"
+            if len(up_stocks) > 20:
+                slack_msg += f"... 외 {len(up_stocks) - 20}개\n"
+            slack_msg += "\n"
 
-    def get_filtered_stocks(self) -> List[Dict]:
-        """
-        필터링된 종목 반환
+        # 하락 종목 (하위 20개)
+        if down_stocks:
+            slack_msg += f"🔵 **하락 종목 ({len(down_stocks)}개)**\n"
+            for stock in down_stocks[:20]:  # 상위 20개만
+                slack_msg += f"[{stock['종목명']}] {stock['전일종가']:,}원 → {stock['현재가']:,}원 ({stock['등락률']:.2f}%)\n"
+            if len(down_stocks) > 20:
+                slack_msg += f"... 외 {len(down_stocks) - 20}개\n"
+            slack_msg += "\n"
 
-        Returns:
-            필터링된 종목 리스트
-        """
-        return self.filtered_stocks
+        # 보합 종목
+        if flat_stocks:
+            slack_msg += f"⚪ **보합 종목 ({len(flat_stocks)}개)**\n"
+            for stock in flat_stocks[:5]:  # 최대 5개만
+                slack_msg += f"[{stock['종목명']}] {stock['현재가']:,}원 (0.00%)\n"
+            if len(flat_stocks) > 5:
+                slack_msg += f"... 외 {len(flat_stocks) - 5}개\n"
+            slack_msg += "\n"
 
-    def send_final_result(self):
-        """Phase 2 최종 결과를 Slack으로 전송 (Phase 3 직전에 호출)"""
-        if not self.filtered_stocks:
-            slack_message("⚠️ Phase 2 최종 결과: 조건 만족 종목 없음")
-            return
+        # 요약 통계
+        slack_msg += f"""━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📈 상승: {len(up_stocks)}개 | 📉 하락: {len(down_stocks)}개 | ➖ 보합: {len(flat_stocks)}개
+전체 평균 등락률: {avg_change:+.2f}%
 
-        slack_msg = f"📊 Phase 2 최종 결과 - {len(self.filtered_stocks)}개 종목\n"
-        for idx, stock in enumerate(self.filtered_stocks[:TOP_STOCKS_COUNT], 1):
-            slack_msg += f"{idx}. {stock['종목명']}: +{stock['등락률']:.2f}%\n"
+🎯 상승률 TOP 5:
+"""
+        # 상승률 TOP 5
+        for i, stock in enumerate(up_stocks[:5], 1):
+            slack_msg += f"{i}. {stock['종목명']}: +{stock['등락률']:.2f}%\n"
 
+        slack_msg += "\n💥 하락률 TOP 5:\n"
+        # 하락률 TOP 5
+        for i, stock in enumerate(down_stocks[:5], 1):
+            slack_msg += f"{i}. {stock['종목명']}: {stock['등락률']:.2f}%\n"
+
+        # 슬랙 전송
         slack_message(slack_msg)
 
-    def run_continuous(self, max_iterations: int = None):
+        # 터미널 출력
+        print("\n" + "="*50)
+        print("[ 프리장 종료 시점 시장 현황 ]")
+        print("="*50)
+        print(f"상승: {len(up_stocks)}개 | 하락: {len(down_stocks)}개 | 보합: {len(flat_stocks)}개")
+        print(f"전체 평균 등락률: {avg_change:+.2f}%")
+        print("\n상승률 TOP 10:")
+        for i, stock in enumerate(up_stocks[:10], 1):
+            print(f"  {i:2d}. {stock['종목명']:12s}: {stock['전일종가']:8,}원 → {stock['현재가']:8,}원 (+{stock['등락률']:.2f}%)")
+        print("\n하락률 TOP 10:")
+        for i, stock in enumerate(down_stocks[:10], 1):
+            print(f"  {i:2d}. {stock['종목명']:12s}: {stock['전일종가']:8,}원 → {stock['현재가']:8,}원 ({stock['등락률']:.2f}%)")
+
+    def get_market_data(self) -> List[Dict]:
         """
-        연속 실행 모드 (대기 없이)
+        전체 시장 데이터 반환
+
+        Returns:
+            전체 종목 데이터 리스트
+        """
+        return self.market_data
+
+    def get_filtered_stocks(self, min_rate: float = 2.0, max_rate: float = 4.0) -> List[Dict]:
+        """
+        특정 등락률 범위의 종목만 필터링
 
         Args:
-            max_iterations: 최대 반복 횟수 (None이면 무한)
+            min_rate: 최소 등락률
+            max_rate: 최대 등락률
+
+        Returns:
+            필터링된 종목 리스트
         """
-        iteration = 0
-        print(f"\n🔄 연속 모니터링 모드 시작 (대기 없음)")
-
-        try:
-            while max_iterations is None or iteration < max_iterations:
-                iteration += 1
-                print(f"\n\n{'='*20} 반복 #{iteration} {'='*20}")
-
-                # Phase 2 실행
-                self.run()
-
-                # 대기 없이 바로 다음 실행
-
-        except KeyboardInterrupt:
-            print("\n\n⚠️  사용자에 의해 중단되었습니다.")
-
-        print(f"\n총 {iteration}회 실행 완료")
+        return [
+            stock for stock in self.market_data
+            if min_rate <= stock['등락률'] <= max_rate
+        ]
 
 
 # 테스트 코드
 if __name__ == "__main__":
     from kis_auth import KISAuth
+    from phase1_past_data import Phase1PastData
 
-    print("Phase 2 테스트")
+    print("Phase 2 테스트 - 프리장 종료 시점 모니터링")
 
     # 인증
     auth = KISAuth(is_real=True)
     api = KISApi(auth)
 
-    # 가짜 전일 데이터 (테스트용)
-    fake_past_data = {}
-    for code in list(KOSPI_100.keys())[:10]:  # 10개만 테스트
-        fake_past_data[code] = {
-            '종가': 50000,  # 임시 값
-            '거래량': 1000000
-        }
+    # Phase 1 실행하여 전일 데이터 가져오기
+    phase1 = Phase1PastData()
+    past_data = phase1.run()
 
-    # Phase 2 실행
-    phase2 = Phase2Monitoring(api, fake_past_data)
-    results = phase2.run()
+    if past_data:
+        # Phase 2 실행
+        phase2 = Phase2Monitoring(api, past_data)
+        market_data = phase2.run()
 
-    print(f"\n필터링 결과: {len(results)}개 종목")
+        print(f"\n전체 조회 결과: {len(market_data)}개 종목")
+
+        # 2~4% 범위 종목만 필터링 (Phase 3에서 활용 가능)
+        filtered = phase2.get_filtered_stocks(min_rate=2.0, max_rate=4.0)
+        print(f"2~4% 범위 종목: {len(filtered)}개")
+    else:
+        print("전일 데이터 조회 실패")
