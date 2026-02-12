@@ -109,6 +109,14 @@ class Phase2Monitoring:
         # 결과 출력 (기본적으로 Slack 메시지 전송 안 함)
         self._print_results(send_slack=False)
 
+        # 필터링된 종목이 있으면 Slack으로 알림
+        if self.filtered_stocks:
+            current_time = datetime.now().strftime('%H:%M:%S')
+            slack_msg = f"🎯 [{current_time}] 조건 만족 종목 발견!\n"
+            for stock in self.filtered_stocks:
+                slack_msg += f"• {stock['종목명']}: +{stock['등락률']:.2f}%\n"
+            slack_message(slack_msg)
+
         return self.filtered_stocks
 
     def _get_current_price(self, code: str) -> Optional[Dict]:

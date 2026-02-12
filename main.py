@@ -96,15 +96,16 @@ class ChulAutoStock:
                     break
 
                 # 08:28 - 일일 초기화
-                if current_time == self.RESET_TIME:
+                if current_time == self.RESET_TIME and not self.phase_completed.get('daily_reset', False):
                     self.daily_reset()
+                    self.phase_completed['daily_reset'] = True
 
                 # 08:29 - 깨어나기
-                elif current_time == self.WAKE_TIME:
+                elif current_time == self.WAKE_TIME and not self.phase_completed['phase0']:
                     self.wake_up()
 
                 # 08:30 - Phase 1 (Phase 0 완료 필수)
-                elif current_time == self.PHASE1_TIME:
+                elif current_time == self.PHASE1_TIME and not self.phase_completed['phase1']:
                     if not self.phase_completed['phase0']:
                         print("⚠️ Phase 0가 완료되지 않아 Phase 1 건너뜀")
                     elif self.auth and self.api:
@@ -121,7 +122,7 @@ class ChulAutoStock:
                         self.phase_completed['phase2_started'] = True
 
                 # 08:58 - Phase 3 (Phase 2 시작 필수)
-                elif current_time == self.PHASE3_TIME:
+                elif current_time == self.PHASE3_TIME and not self.phase_completed['phase3']:
                     if not self.phase_completed['phase2_started']:
                         print("⚠️ Phase 2가 실행되지 않아 Phase 3 건너뜀")
                     elif self.auth and self.api:
@@ -138,7 +139,7 @@ class ChulAutoStock:
                         self.phase4_position_management()
 
                 # 09:59 - Phase 5
-                elif current_time == self.PHASE5_TIME:
+                elif current_time == self.PHASE5_TIME and not self.phase_completed['phase5']:
                     if self.auth and self.api:
                         self.phase5_daily_closing()
 
@@ -399,6 +400,7 @@ class ChulAutoStock:
 
         # Phase 완료 상태 초기화
         self.phase_completed = {
+            'daily_reset': True,  # daily_reset은 이미 실행됨
             'phase0': False,
             'phase1': False,
             'phase2_started': False,

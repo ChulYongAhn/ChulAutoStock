@@ -4,7 +4,10 @@
       "Bash(ls:*)",
       "Bash(/opt/homebrew/Caskroom/miniconda/base/bin/python -m pip:*)",
       "Bash(crontab:*)",
-      "Bash(/opt/homebrew/Caskroom/miniconda/base/bin/python:*)"
+      "Bash(/opt/homebrew/Caskroom/miniconda/base/bin/python:*)",
+      "Bash(launchctl:*)",
+      "Read(//Users/chulyong/Library/LaunchAgents/**)",
+      "Read(//Users/chulyong/Library/Mobile Documents/com~apple~CloudDocs/**)"
     ]
   }
 }
